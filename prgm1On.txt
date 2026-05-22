@@ -1,0 +1,176 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+// ---------------- WIFI ----------------
+const char* ssid = "Nord 4";
+const char* password = "viaadamo";
+
+// ---------------- THINGSBOARD MQTT ----------------
+const char* mqtt_server = "mqtt.thingsboard.cloud";
+const char* token = "79TPitVtnFPQa9kpU6EE";
+
+// ---------------- WIND VANE ----------------
+#define NORTH_PIN 26
+#define EAST_PIN 27
+#define SOUTH_PIN 25
+#define WEST_PIN 33
+
+// ---------------- ANEMOMETER ----------------
+#define WIND_PIN 32
+
+volatile long pulseCount = 0;
+
+unsigned long lastMillis = 0;
+float speedKph = 0;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// ---------------- INTERRUPT ----------------
+void IRAM_ATTR countPulse() {
+  pulseCount++;
+}
+
+// ---------------- WIFI ----------------
+void setup_wifi() {
+
+  Serial.println();
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("WiFi connected");
+}
+
+// ---------------- MQTT ----------------
+void reconnect() {
+
+  while (!client.connected()) {
+
+    Serial.print("Connecting MQTT...");
+
+    if (client.connect("ESP32", token, NULL)) {
+
+      Serial.println("connected");
+
+    } else {
+
+      Serial.print("failed ");
+      Serial.println(client.state());
+
+      delay(2000);
+    }
+  }
+}
+
+// ---------------- SETUP ----------------
+void setup() {
+
+  Serial.begin(115200);
+
+  pinMode(NORTH_PIN, INPUT_PULLUP);
+  pinMode(EAST_PIN, INPUT_PULLUP);
+  pinMode(SOUTH_PIN, INPUT_PULLUP);
+  pinMode(WEST_PIN, INPUT_PULLUP);
+
+  pinMode(WIND_PIN, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(WIND_PIN), countPulse, FALLING);
+
+  setup_wifi();
+
+  client.setServer(mqtt_server, 1883);
+}
+
+// ---------------- LOOP ----------------
+void loop() {
+
+  if (!client.connected()) {
+    reconnect();
+  }
+
+  client.loop();
+
+  // ---------- DIRECTION ----------
+  // ---------- DIRECTION ----------
+  bool N = digitalRead(NORTH_PIN) == LOW;
+  bool E = digitalRead(EAST_PIN) == LOW;
+  bool S = digitalRead(SOUTH_PIN) == LOW;
+  bool W = digitalRead(WEST_PIN) == LOW;
+
+  int active = N + E + S + W;
+
+  int directionAngle = 0;
+
+  if (active > 2) {
+    directionAngle = 0;
+  }
+
+  else if (N && !E && !S && !W)
+    directionAngle = 0;
+
+  else if (N && E && !S && !W)
+    directionAngle = 45;
+
+  else if (!N && E && !S && !W)
+    directionAngle = 90;
+
+  else if (!N && E && S && !W)
+    directionAngle = 135;
+
+  else if (!N && !E && S && !W)
+    directionAngle = 180;
+
+  else if (!N && !E && S && W)
+    directionAngle = 225;
+
+  else if (!N && !E && !S && W)
+    directionAngle = 270;
+
+  else if (N && !E && !S && W)
+    directionAngle = 315;
+
+  // ---------- SPEED ----------
+  if (millis() - lastMillis >= 1000) {
+
+    noInterrupts();
+    int pulses = pulseCount;
+    pulseCount = 0;
+    interrupts();
+
+    lastMillis = millis();
+
+    float calibrationFactor = 1.2;
+
+    speedKph = pulses * calibrationFactor;
+
+    String payload = "{";
+    payload += "\"windSpeed\":" + String(speedKph) + ",";
+    payload += "\"windDirection\":" + String(directionAngle);
+    payload += "}";
+
+    Serial.println(payload);
+
+    Serial.print("Pulses: ");
+    Serial.println(pulses);
+
+    Serial.print("Speed: ");
+    Serial.print(speedKph);
+    Serial.println(" km/h");
+
+    Serial.print("Direction: ");
+    Serial.println(directionAngle);
+
+    if (client.publish("v1/devices/me/telemetry", payload.c_str())) {
+      Serial.println("Data sent to ThingsBoard");
+    } else {
+      Serial.println("Failed to send data");
+    }
+  }
+
+  delay(100);
+}
