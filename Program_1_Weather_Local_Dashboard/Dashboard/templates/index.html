@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div>
+        <h1>Local Weather Dashboard</h1>
+        <p>Live sensor data from ESP32</p>
+      </div>
+      <div class="status">
+        <span class="dot"></span>
+        <span id="connectionStatus">Waiting for data...</span>
+      </div>
+    </header>
+
+    <section class="cards">
+      <div class="card"><h3>Temperature</h3><div id="temperatureValue" class="big">-- °C</div></div>
+      <div class="card"><h3>Humidity</h3><div id="humidityValue" class="big">-- %</div></div>
+      <div class="card"><h3>Wind Speed</h3><div id="windSpeedValue" class="big">-- km/h</div></div>
+      <div class="card"><h3>Rainfall</h3><div id="rainfallValue" class="big">-- mm</div></div>
+    </section>
+
+    <section class="card chart-card">
+      <h3>Temperature Trend</h3>
+      <canvas id="tempChart"></canvas>
+    </section>
+
+    <section class="card chart-card">
+      <h3>Humidity Trend</h3>
+      <canvas id="humidityChart"></canvas>
+    </section>
+
+    <section class="card chart-card">
+      <h3>Wind Speed Trend</h3>
+      <canvas id="windChart"></canvas>
+    </section>
+
+    <section class="card chart-card">
+      <h3>Rainfall Trend</h3>
+      <canvas id="rainChart"></canvas>
+    </section>
+
+    <footer class="footer">
+      <span id="lastUpdated">Last update: --</span>
+    </footer>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

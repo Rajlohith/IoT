@@ -1,0 +1,7 @@
+Bot Name: RainAlertBot
+
+Bot Token:
+xxxxxxxxxxxxxxxxxxxxxxxx
+
+Chat ID:
+123456789

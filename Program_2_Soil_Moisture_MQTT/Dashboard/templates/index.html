@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soil Moisture Dashboard</title>
+
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+
+  <div class="container">
+
+    <header class="header">
+
+      <div>
+        <h1>Soil Moisture Dashboard</h1>
+        <p>Live sensor data from ESP32 + Pico W</p>
+      </div>
+
+      <div class="status">
+        <span class="dot"></span>
+        <span id="connectionStatus">Waiting for data...</span>
+      </div>
+
+    </header>
+
+    <section class="cards">
+
+      <div class="card">
+        <h3>Current Moisture</h3>
+        <div id="currentValue" class="big">-- %</div>
+      </div>
+
+      <div class="card">
+        <h3>Minimum Moisture</h3>
+        <div id="minValue" class="big">-- %</div>
+      </div>
+
+      <div class="card">
+        <h3>Maximum Moisture</h3>
+        <div id="maxValue" class="big">-- %</div>
+      </div>
+
+      <div class="card">
+        <h3>Average Moisture</h3>
+        <div id="avgValue" class="big">-- %</div>
+      </div>
+
+    </section>
+
+    <section class="card chart-card">
+      <h3>Soil Moisture Trend</h3>
+      <canvas id="soilChart"></canvas>
+    </section>
+
+    <footer class="footer">
+      <span id="lastUpdated">Last update: --</span>
+    </footer>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+
+</body>
+</html>
