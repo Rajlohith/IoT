@@ -5,6 +5,10 @@ from datetime import datetime
 import csv
 import os
 
+import json
+import threading
+import paho.mqtt.client as mqtt
+
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 DATA_FILE = "dashboard_history.csv"
@@ -20,7 +24,52 @@ FIELDNAMES = [
     "tipCount",
 ]
 
+MQTT_BROKER = "localhost"
+MQTT_PORT = 1883
+MQTT_TOPIC = "weather/data"
+
 history = deque(maxlen=5000)
+
+def on_connect(client, userdata, flags, rc):
+    print("Connected to MQTT")
+    client.subscribe(MQTT_TOPIC)
+
+
+def on_message(client, userdata, msg):
+
+    try:
+
+        payload = json.loads(
+            msg.payload.decode()
+        )
+
+        record = normalize_record(payload)
+
+        history.append(record)
+
+        append_to_csv(record)
+
+        print("MQTT Data:", record)
+
+    except Exception as e:
+
+        print("MQTT Error:", e)
+
+
+def start_mqtt():
+
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    client.connect(
+        MQTT_BROKER,
+        MQTT_PORT,
+        60
+    )
+
+    client.loop_forever()
 
 def to_float(value):
     try:
@@ -55,7 +104,7 @@ def normalize_record(data):
         "temperature": to_float(data.get("temperature")),
         "humidity": to_float(data.get("humidity")),
         "windSpeed": to_float(data.get("windSpeed")),
-        "windDirection": to_int(data.get("windDirection")),
+        "windDirection": str(data.get("windDirection", "Unknown")),
         "rainfall": to_float(data.get("rainfall")),
         "rainDetected": to_bool(data.get("rainDetected")),
         "pulses": to_int(data.get("pulses")),
@@ -82,7 +131,7 @@ def load_existing_history():
                 "temperature": to_float(row.get("temperature")),
                 "humidity": to_float(row.get("humidity")),
                 "windSpeed": to_float(row.get("windSpeed")),
-                "windDirection": to_int(row.get("windDirection")),
+                "windDirection": row.get("windDirection", "Unknown"),
                 "rainfall": to_float(row.get("rainfall")),
                 "rainDetected": to_bool(row.get("rainDetected")),
                 "pulses": to_int(row.get("pulses")),
@@ -97,13 +146,7 @@ def home():
     return render_template("index.html")
 
 
-@app.route("/api/data", methods=["POST"])
-def receive_data():
-    data = request.get_json(silent=True) or {}
-    record = normalize_record(data)
-    history.append(record)
-    append_to_csv(record)
-    return jsonify({"ok": True, "stored": record})
+
 
 
 @app.route("/api/latest", methods=["GET"])
@@ -118,6 +161,13 @@ def get_history():
     limit = request.args.get("limit", default=300, type=int)
     limit = max(1, min(limit, 5000))
     return jsonify(list(history)[-limit:])
+
+mqtt_thread = threading.Thread(
+    target=start_mqtt,
+    daemon=True
+)
+
+mqtt_thread.start()
 
 
 if __name__ == "__main__":

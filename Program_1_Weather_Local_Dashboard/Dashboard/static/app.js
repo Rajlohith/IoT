@@ -123,13 +123,26 @@ function drawChart(canvasId, points, title, unit) {
 }
 
 function updateCards(latest) {
-  document.getElementById("temperatureValue").textContent = formatValue(latest.temperature, "°C");
-  document.getElementById("humidityValue").textContent = formatValue(latest.humidity, "%");
-  document.getElementById("windSpeedValue").textContent = formatValue(latest.windSpeed, "km/h");
-  document.getElementById("rainfallValue").textContent = formatValue(latest.rainfall, "mm");
+  document.getElementById("temperatureValue").textContent =
+    formatValue(latest.temperature, "°C");
 
-  document.getElementById("connectionStatus").textContent = "Live";
-  document.getElementById("lastUpdated").textContent = "Last update: " + formatTime(latest.timestamp);
+  document.getElementById("humidityValue").textContent =
+    formatValue(latest.humidity, "%");
+
+  document.getElementById("windSpeedValue").textContent =
+    formatValue(latest.windSpeed, "km/h");
+
+  document.getElementById("windDirectionValue").textContent =
+    latest.windDirection || "Unknown";
+
+  document.getElementById("rainfallValue").textContent =
+    formatValue(latest.rainfall, "mm");
+
+  document.getElementById("connectionStatus").textContent =
+    "Live";
+
+  document.getElementById("lastUpdated").textContent =
+    "Last update: " + formatTime(latest.timestamp);
 }
 
 function drawAllCharts() {
@@ -173,5 +186,5 @@ async function refresh() {
 }
 
 refresh();
-setInterval(refresh, 2000);
+setInterval(refresh, 500);
 window.addEventListener("resize", drawAllCharts);

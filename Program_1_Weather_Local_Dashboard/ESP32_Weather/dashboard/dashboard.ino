@@ -1,56 +1,93 @@
 #include <WiFi.h>
-#include <HTTPClient.h>
+#include <PubSubClient.h>
 #include <DHT.h>
 
-// ---------------- WIFI ----------------
+// ============================================================================
+// WIFI CONFIGURATION
+// ============================================================================
 const char* ssid = "Nord 4";
 const char* password = "viaadamo";
 
-// ---------------- LOCAL DASHBOARD ----------------
-const char* serverUrl = "http://10.118.86.186:5000/api/data";
+// ============================================================================
+// MQTT CONFIGURATION
+// ============================================================================
+const char* mqtt_server = "10.118.86.186";
+const int mqtt_port = 1883;
+const char* mqtt_topic = "weather/data";
 
-// ---------------- WIND VANE ----------------
+// ============================================================================
+// WIND VANE PINS
+// ============================================================================
 #define NORTH_PIN 26
 #define EAST_PIN  27
 #define SOUTH_PIN 25
 #define WEST_PIN  33
 
-// ---------------- ANEMOMETER ----------------
+// ============================================================================
+// ANEMOMETER PIN
+// ============================================================================
 #define WIND_PIN 32
 
-// ---------------- RAIN GAUGE ----------------
+// ============================================================================
+// RAIN GAUGE PIN
+// ============================================================================
 #define RAIN_PIN 35
 
-// ---------------- DHT ----------------
+// ============================================================================
+// DHT SENSOR CONFIGURATION
+// ============================================================================
 #define DHTPIN 13
 #define DHTTYPE DHT11
 
 DHT dht(DHTPIN, DHTTYPE);
 
-// ---------------- CONSTANTS ----------------
-const float RAIN_TIP = 0.1983;
-const float CALIBRATION_FACTOR = 1.2;
+// --------------------------------------------------------------------------
+// RAIN GAUGE CALIBRATION VALUES
+// --------------------------------------------------------------------------
+const float FUNNEL_DIAMETER_CM = 15.2;
+const float TIP_VOLUME_ML = 6.0;
 
-// ---------------- VARIABLES ----------------
-volatile long pulseCount = 0;
+// Calculate collector area
+const float FUNNEL_RADIUS_CM = FUNNEL_DIAMETER_CM / 2.0000;
+const float FUNNEL_AREA_CM2 = 3.14159 * FUNNEL_RADIUS_CM * FUNNEL_RADIUS_CM;
 
-unsigned long lastMillis = 0;
-unsigned long lastTipTime = 0;
+// Calculate rainfall represented by one tip
+const float RAIN_TIP = (TIP_VOLUME_ML / FUNNEL_AREA_CM2) * 10.0;
 
-float speedKph = 0;
-float totalRainfall = 0;
+// ============================================================================
+// SENSOR CALIBRATION CONSTANTS
+// ============================================================================
+const float ANEMOMETER_RADIUS_M = 0.02;   // 2 cm radius
 
-int tipcount = 0;
-bool lastRainState = HIGH;
+// ============================================================================
+// GLOBAL VARIABLES
+// ============================================================================
+volatile long pulseCount = 0;           // Wind sensor pulse counter
 
-WiFiClient wifiClient;
+unsigned long lastMillis = 0;           // Last sensor update timestamp
+unsigned long lastTipTime = 0;          // Last rain tip timestamp
 
-// ---------------- INTERRUPT ----------------
+float speedKph = 0;                     // Calculated wind speed
+float totalRainfall = 0;                // Total rainfall accumulation
+
+int tipcount = 0;                       // Rain gauge tip counter
+bool lastRainState = HIGH;              // Previous rain sensor state
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+
+// ============================================================================
+// INTERRUPT SERVICE ROUTINE
+// Counts anemometer pulses for wind speed calculation
+// ============================================================================
 void IRAM_ATTR countPulse() {
   pulseCount++;
 }
 
-// ---------------- WIFI ----------------
+// ============================================================================
+// WIFI CONNECTION
+// Connects ESP32 to the configured WiFi network
+// ============================================================================
 void setupWiFi() {
 
   Serial.print("Connecting to WiFi");
@@ -69,36 +106,58 @@ void setupWiFi() {
   Serial.println(WiFi.localIP());
 }
 
-// ---------------- HTTP POST ----------------
-bool sendToDashboard(const String& payload) {
+// ============================================================================
+// MQTT RECONNECTION
+// Keeps attempting connection until MQTT broker is available
+// ============================================================================
+void reconnectMQTT() {
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi disconnected");
-    return false;
+  while (!mqttClient.connected()) {
+
+    Serial.print("Connecting MQTT...");
+
+    String clientId =
+      "ESP32Weather-" +
+      String(random(0xffff), HEX);
+
+    if (mqttClient.connect(clientId.c_str())) {
+
+      Serial.println("connected");
+
+    } else {
+
+      Serial.print("failed rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" retrying...");
+
+      delay(2000);
+    }
   }
-
-  HTTPClient http;
-
-  http.begin(serverUrl);
-  http.addHeader("Content-Type", "application/json");
-
-  int httpCode = http.POST(payload);
-
-  Serial.print("HTTP Code: ");
-  Serial.println(httpCode);
-
-  if (httpCode > 0) {
-    String response = http.getString();
-    Serial.println(response);
-  }
-
-  http.end();
-
-  return (httpCode >= 200 && httpCode < 300);
 }
 
-// ---------------- WIND DIRECTION ----------------
-int readWindDirection() {
+// ============================================================================
+// MQTT PUBLISH
+// Publishes sensor data payload to MQTT topic
+// ============================================================================
+bool publishMQTT(const String& payload) {
+
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+
+  mqttClient.loop();
+
+  return mqttClient.publish(
+      mqtt_topic,
+      payload.c_str()
+  );
+}
+
+// ============================================================================
+// WIND DIRECTION READING
+// Converts reed switch states into compass angles
+// ============================================================================
+String readWindDirection() {
 
   bool N = digitalRead(NORTH_PIN) == LOW;
   bool E = digitalRead(EAST_PIN) == LOW;
@@ -107,56 +166,87 @@ int readWindDirection() {
 
   int active = N + E + S + W;
 
-  if (active > 2) return 0;
+  if (active == 0) return "Calm";
 
-  if (N && !E && !S && !W) return 0;
-  if (N && E && !S && !W) return 45;
-  if (!N && E && !S && !W) return 90;
-  if (!N && E && S && !W) return 135;
-  if (!N && !E && S && !W) return 180;
-  if (!N && !E && S && W) return 225;
-  if (!N && !E && !S && W) return 270;
-  if (N && !E && !S && W) return 315;
+  if (active > 2) return "Unknown";
 
-  return 0;
+  if (N && !E && !S && !W) return "North";
+  if (N && E && !S && !W) return "North-East";
+  if (!N && E && !S && !W) return "East";
+  if (!N && E && S && !W) return "South-East";
+  if (!N && !E && S && !W) return "South";
+  if (!N && !E && S && W) return "South-West";
+  if (!N && !E && !S && W) return "West";
+  if (N && !E && !S && W) return "North-West";
+
+  return "Unknown";
 }
 
-// ---------------- SETUP ----------------
+// ============================================================================
+// SETUP
+// Initializes sensors, networking, and interrupts
+// ============================================================================
 void setup() {
 
   Serial.begin(115200);
 
+  // Wind vane inputs
   pinMode(NORTH_PIN, INPUT_PULLUP);
   pinMode(EAST_PIN, INPUT_PULLUP);
   pinMode(SOUTH_PIN, INPUT_PULLUP);
   pinMode(WEST_PIN, INPUT_PULLUP);
 
+  // Anemometer input
   pinMode(WIND_PIN, INPUT_PULLUP);
 
+  // Rain gauge input
   pinMode(RAIN_PIN, INPUT);
 
   lastRainState = digitalRead(RAIN_PIN);
 
+  // Initialize DHT sensor
   dht.begin();
 
+  // Start wind pulse counting interrupt
   attachInterrupt(
     digitalPinToInterrupt(WIND_PIN),
     countPulse,
     FALLING
   );
 
+  // Connect to WiFi
   setupWiFi();
+
+  // Configure MQTT broker
+  mqttClient.setServer(
+    mqtt_server,
+    mqtt_port
+  );
 
   lastMillis = millis();
 }
 
-// ---------------- LOOP ----------------
+// ============================================================================
+// MAIN LOOP
+// Reads sensors, processes data, and publishes to MQTT
+// ============================================================================
 void loop() {
 
+  // Ensure MQTT connection is active
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+
+  mqttClient.loop();
+
+  // --------------------------------------------------------------------------
+  // Rain Gauge Processing
+  // --------------------------------------------------------------------------
   bool currentRainState = digitalRead(RAIN_PIN);
 
   if (lastRainState == LOW && currentRainState == HIGH) {
 
+    // Debounce rain bucket tips
     if (millis() - lastTipTime > 1000) {
       tipcount++;
       lastTipTime = millis();
@@ -165,13 +255,18 @@ void loop() {
 
   lastRainState = currentRainState;
 
+  // Reset rainfall after prolonged inactivity
   if (tipcount > 0 && millis() - lastTipTime > 20000) {
     tipcount = 0;
     totalRainfall = 0;
   }
 
+  // --------------------------------------------------------------------------
+  // Sensor Update Every Second
+  // --------------------------------------------------------------------------
   if (millis() - lastMillis >= 1000) {
 
+    // Safely copy pulse count from ISR
     noInterrupts();
     long pulses = pulseCount;
     pulseCount = 0;
@@ -179,27 +274,46 @@ void loop() {
 
     lastMillis = millis();
 
-    speedKph = pulses * CALIBRATION_FACTOR;
+// ------------------------------------------------------------------------
+// Wind Speed Calculation
+// 1 pulse = 1 full revolution
+// ------------------------------------------------------------------------
+float revolutionsPerSecond = pulses;
 
-    totalRainfall = tipcount * RAIN_TIP;
+float circumference =
+    2.0 * 3.14159 * ANEMOMETER_RADIUS_M;
 
-    bool rainDetected =
-      (millis() - lastTipTime < 20000);
+float windSpeedMS =
+    revolutionsPerSecond * circumference;
 
-    float temperature =
-      dht.readTemperature();
+speedKph =
+    windSpeedMS * 3.6;
 
-    float humidity =
-      dht.readHumidity();
+// ------------------------------------------------------------------------
+// Rainfall Calculation
+// ------------------------------------------------------------------------
+totalRainfall =
+    tipcount * RAIN_TIP;
 
-    int directionAngle =
-      readWindDirection();
+    // Rain detection status
+    bool rainDetected = (millis() - lastTipTime < 20000);
 
+    // Environmental readings
+    float temperature = dht.readTemperature();
+
+    float humidity = dht.readHumidity();
+
+    // Wind direction reading
+    String windDirection = readWindDirection();
+
+    // ------------------------------------------------------------------------
+    // Build JSON Payload
+    // ------------------------------------------------------------------------
     String payload = "{";
     payload += "\"temperature\":" + String(temperature) + ",";
     payload += "\"humidity\":" + String(humidity) + ",";
     payload += "\"windSpeed\":" + String(speedKph) + ",";
-    payload += "\"windDirection\":" + String(directionAngle) + ",";
+    payload += "\"windDirection\":\"" + windDirection + "\",";
     payload += "\"rainfall\":" + String(totalRainfall) + ",";
     payload += "\"rainDetected\":" + String(rainDetected ? "true" : "false") + ",";
     payload += "\"pulses\":" + String(pulses) + ",";
@@ -208,7 +322,10 @@ void loop() {
 
     Serial.println(payload);
 
-    if (sendToDashboard(payload)) {
+    // ------------------------------------------------------------------------
+    // Publish Data to MQTT Broker
+    // ------------------------------------------------------------------------
+    if (publishMQTT(payload)) {
       Serial.println("Data sent to dashboard");
     } else {
       Serial.println("Failed to send");
