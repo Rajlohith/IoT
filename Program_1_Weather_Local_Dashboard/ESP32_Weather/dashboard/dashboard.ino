@@ -1,6 +1,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <DHT.h>
+#include <Wire.h>
+#include <Adafruit_BMP085.h>
 
 // ============================================================================
 // WIFI CONFIGURATION
@@ -10,9 +12,9 @@ const char* password = "viaadamo";
 
 // ============================================================================
 // MQTT CONFIGURATION
-// ============================================================================
-const char* mqtt_server = "10.118.86.186";
-const int mqtt_port = 1883;
+// ================================r============================================
+const char* mqtt_server = "10.118.86.39";
+const int mqtt_port = 1884;
 const char* mqtt_topic = "weather/data";
 
 // ============================================================================
@@ -40,6 +42,11 @@ const char* mqtt_topic = "weather/data";
 #define DHTTYPE DHT11
 
 DHT dht(DHTPIN, DHTTYPE);
+
+// ============================================================================
+// BMP SENSOR CONFIGURATION
+// ============================================================================
+Adafruit_BMP085 bmp;
 
 // --------------------------------------------------------------------------
 // RAIN GAUGE CALIBRATION VALUES
@@ -207,6 +214,10 @@ void setup() {
   // Initialize DHT sensor
   dht.begin();
 
+  // Initialize DHT sensor
+  Wire.begin(21, 22);
+  bmp.begin();
+
   // Start wind pulse counting interrupt
   attachInterrupt(
     digitalPinToInterrupt(WIND_PIN),
@@ -303,6 +314,9 @@ totalRainfall =
 
     float humidity = dht.readHumidity();
 
+    // Air Pressure reading
+    float pressure = bmp.readPressure() / 100.0;
+
     // Wind direction reading
     String windDirection = readWindDirection();
 
@@ -312,6 +326,7 @@ totalRainfall =
     String payload = "{";
     payload += "\"temperature\":" + String(temperature) + ",";
     payload += "\"humidity\":" + String(humidity) + ",";
+    payload += "\"pressure\":" + String(pressure) + ",";
     payload += "\"windSpeed\":" + String(speedKph) + ",";
     payload += "\"windDirection\":\"" + windDirection + "\",";
     payload += "\"rainfall\":" + String(totalRainfall) + ",";

@@ -16,6 +16,7 @@ FIELDNAMES = [
     "timestamp",
     "temperature",
     "humidity",
+    "pressure",
     "windSpeed",
     "windDirection",
     "rainfall",
@@ -25,7 +26,7 @@ FIELDNAMES = [
 ]
 
 MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
+MQTT_PORT = 1884
 MQTT_TOPIC = "weather/data"
 
 history = deque(maxlen=5000)
@@ -100,16 +101,17 @@ def normalize_record(data):
         ts = datetime.now().isoformat(timespec="seconds")
 
     record = {
-        "timestamp": ts,
-        "temperature": to_float(data.get("temperature")),
-        "humidity": to_float(data.get("humidity")),
-        "windSpeed": to_float(data.get("windSpeed")),
-        "windDirection": str(data.get("windDirection", "Unknown")),
-        "rainfall": to_float(data.get("rainfall")),
-        "rainDetected": to_bool(data.get("rainDetected")),
-        "pulses": to_int(data.get("pulses")),
-        "tipCount": to_int(data.get("tipCount")),
-    }
+	    "timestamp": ts,
+	    "temperature": to_float(data.get("temperature")),
+	    "humidity": to_float(data.get("humidity")),
+	    "pressure": to_float(data.get("pressure")),
+	    "windSpeed": to_float(data.get("windSpeed")),
+	    "windDirection": str(data.get("windDirection", "Unknown")),
+	    "rainfall": to_float(data.get("rainfall")),
+	    "rainDetected": to_bool(data.get("rainDetected")),
+	    "pulses": to_int(data.get("pulses")),
+	    "tipCount": to_int(data.get("tipCount")),
+	}
     return record
 
 def append_to_csv(record):
@@ -130,6 +132,7 @@ def load_existing_history():
                 "timestamp": row.get("timestamp", ""),
                 "temperature": to_float(row.get("temperature")),
                 "humidity": to_float(row.get("humidity")),
+                "pressure": to_float(row.get("pressure")),
                 "windSpeed": to_float(row.get("windSpeed")),
                 "windDirection": row.get("windDirection", "Unknown"),
                 "rainfall": to_float(row.get("rainfall")),

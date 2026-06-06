@@ -128,6 +128,9 @@ function updateCards(latest) {
 
   document.getElementById("humidityValue").textContent =
     formatValue(latest.humidity, "%");
+    
+  document.getElementById("airPressureValue").textContent =
+    formatValue(latest.pressure, "hPa");
 
   document.getElementById("windSpeedValue").textContent =
     formatValue(latest.windSpeed, "km/h");
@@ -148,11 +151,13 @@ function updateCards(latest) {
 function drawAllCharts() {
   const tempPoints = historyData.map(r => ({ timestamp: r.timestamp, value: r.temperature }));
   const humidityPoints = historyData.map(r => ({ timestamp: r.timestamp, value: r.humidity }));
+  const pressurePoints = historyData.map(r => ({ timestamp: r.timestamp, value: r.pressure }));
   const windPoints = historyData.map(r => ({ timestamp: r.timestamp, value: r.windSpeed }));
   const rainPoints = historyData.map(r => ({ timestamp: r.timestamp, value: r.rainfall }));
 
   drawChart("tempChart", tempPoints, "Temperature Trend", "°C");
   drawChart("humidityChart", humidityPoints, "Humidity Trend", "%");
+  drawChart("pressureChart", pressurePoints, "Air Pressure Trend", "hPa");
   drawChart("windChart", windPoints, "Wind Speed Trend", "km/h");
   drawChart("rainChart", rainPoints, "Rainfall Trend", "mm");
 }
